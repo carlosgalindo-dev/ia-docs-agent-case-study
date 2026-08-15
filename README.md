@@ -10,13 +10,13 @@
 
 Un cliente con documentación técnica interna dispersa (guías, procesos,
 investigación) en un sitio Docusaurus que nadie mantenía actualizado. El
-equipo preguntaba lo mismo por Slack/Telegram una y otra vez, y encontrar la
+equipo preguntaba lo mismo por Slack una y otra vez, y encontrar la
 página correcta dependía de recordar en qué carpeta vivía.
 
 ## La solución
 
 Un agente conversacional (**eve**) que:
-- Responde preguntas del equipo por Slack y Telegram, citando la página real de la wiki.
+- Responde preguntas del equipo por Slack, citando la página real de la wiki.
 - Puede **editar la documentación directamente** — crear páginas, corregir contenido, incluso dar de alta secciones nuevas de primer nivel — no solo responder.
 - Publica los cambios de forma segura y automática, sin intervención manual.
 
@@ -60,7 +60,7 @@ desactualiza.
 ## Arquitectura
 
 ```
-Slack / Telegram
+Slack
        │
        ▼
  Agente (LLM + orquestador)
@@ -93,8 +93,25 @@ scripts/
 ## Stack
 
 Orquestador de agentes + LLM, sandbox de ejecución tipo Codex CLI, Docusaurus
-como sitio de documentación, Slack/Telegram como canales, systemd para
-gestión del servicio, nginx + Let's Encrypt en el edge.
+como sitio de documentación, Slack como canal, systemd para gestión del
+servicio, nginx + Let's Encrypt en el edge.
+
+## Cómo se configura (a alto nivel)
+
+1. **Slack** — crear una Slack App, habilitar *Socket Mode*, dar los scopes
+   de bot necesarios (`chat:write`, `channels:history`, etc.), instalar en
+   el workspace → genera el `botToken` y `appToken` que van en
+   `openclaw.json` (vía variables de entorno, nunca hardcodeados).
+2. **Sandbox** — definir `writable_roots` en `config.toml` con las únicas
+   rutas que el agente puede tocar; sin esto, cualquier intento de escritura
+   falla por diseño.
+3. **Publicación** — registrar `wiki-publish` como el paso que hace build +
+   swap atómico después de cada edición real del agente.
+4. **Servicio** — correr el orquestador como servicio systemd (`--user`),
+   para que sobreviva reinicios y tenga logs centralizados.
+
+> Nota: este repo documenta la configuración real; el orquestador (OpenClaw)
+> es una dependencia externa, no está incluido aquí.
 
 ---
 
