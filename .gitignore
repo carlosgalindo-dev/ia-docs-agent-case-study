@@ -1,0 +1,9 @@
+*.bak
+*.bak-*
+*.sqlite
+*.sqlite-*
+.DS_Store
+sessions/
+credentials/
+identity/
+auth.json

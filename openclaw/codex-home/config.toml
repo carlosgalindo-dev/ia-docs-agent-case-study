@@ -1,0 +1,8 @@
+[projects."/root/.openclaw/workspace"]
+trust_level = "trusted"
+
+[projects."/srv/acmecorp-docs-site"]
+trust_level = "trusted"
+
+[sandbox_workspace_write]
+writable_roots = ["/srv/acmecorp-docs-site", "/srv/wiki", "/var/lib/eve-doc-link", "/var/lib/eve-folder-map"]

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Publica la wiki de Docusaurus sin ventana de caida.
+# Compila a un release nuevo, valida, y solo entonces cambia el symlink.
+# Si algo falla, el sitio en vivo no se toca.
+set -euo pipefail
+
+REPO=/srv/acmecorp-docs-site
+RELEASES=/srv/wiki/releases
+CURRENT=/srv/wiki/current
+KEEP=3
+MIN_FILES=800
+
+TS=$(date +%Y%m%d-%H%M%S)
+DEST="$RELEASES/$TS"
+
+log() { printf '[wiki-publish] %s\n' "$1"; }
+abortar() {
+	log "ERROR: $1"
+	log "El sitio en vivo NO se modifico."
+	rm -rf "$DEST"
+	exit 1
+}
+
+mkdir -p "$RELEASES"
+cd "$REPO"
+
+log "compilando release $TS"
+# heap capado: nginx+gateway rondan ~850MB en reposo de 1967MB totales;
+# sin limite, el build de Docusaurus se comio toda la RAM + swap y el
+# kernel mato al gateway por OOM (visto real el 2026-08-10, 3 veces).
+# NODE_OPTIONS externo se respeta (default 768 si no viene nada), pero
+# se capa duro a 1536MB: mas que eso y el gateway se queda sin RAM igual.
+NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=768}"
+NODE_CAP_MB=1536
+req_mb=$(printf '%s' "$NODE_OPTIONS" | grep -oE 'max-old-space-size=[0-9]+' | grep -oE '[0-9]+' || true)
+if [ -n "$req_mb" ] && [ "$req_mb" -gt "$NODE_CAP_MB" ]; then
+	log "NODE_OPTIONS pedia ${req_mb}MB, capado a ${NODE_CAP_MB}MB"
+	NODE_OPTIONS="--max-old-space-size=$NODE_CAP_MB"
+fi
+NODE_OPTIONS="$NODE_OPTIONS" npm run build -- --out-dir "$DEST" || abortar "el build fallo"
+
+# --- validacion: nada se publica sin pasar esto ---
+for f in index.html 404.html search-index.json; do
+	[ -s "$DEST/$f" ] || abortar "falta $f en el release"
+done
+
+n=$(find "$DEST" -type f | wc -l)
+[ "$n" -ge "$MIN_FILES" ] || abortar "solo $n archivos, esperaba al menos $MIN_FILES"
+log "validacion ok: $n archivos"
+
+# --- swap atomico: rename(2), no existe instante intermedio ---
+ln -sfn "$DEST" "$CURRENT.tmp"
+mv -T "$CURRENT.tmp" "$CURRENT"
+log "publicado -> $(readlink -f "$CURRENT")"
+
+# --- indice de links de Eve (debe ir despues del swap) ---
+eve-doc-link-index
+
+# --- mapa de carpetas para Eve (debe ir despues del swap) ---
+folder-map-generate
+
+# --- poda: conserva los KEEP mas recientes ---
+cd "$RELEASES"
+ls -1dt */ 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r d; do
+	log "podando release viejo: ${d%/}"
+	rm -rf "$d"
+done
+
+log "listo"

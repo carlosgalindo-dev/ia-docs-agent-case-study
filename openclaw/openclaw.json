@@ -1,0 +1,269 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/root/.openclaw/workspace",
+      "models": {
+        "openai/gpt-5.4-mini": {
+          "alias": "GPT"
+        },
+        "google/gemini-3.1-pro-preview": {},
+        "google/gemini-2.5-flash": {},
+        "openai/gpt-5.6-luna": {}
+      },
+      "model": {
+        "primary": "openai/gpt-5.6-luna"
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "<SET_VIA_ENV:OPENCLAW_GATEWAY_TOKEN>"
+    },
+    "port": 18789,
+    "bind": "loopback",
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "controlUi": {
+      "allowInsecureAuth": true
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "contacts.add",
+        "calendar.add",
+        "reminders.add",
+        "sms.send",
+        "sms.search"
+      ]
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "allow": [
+      "write",
+      "edit",
+      "apply_patch",
+      "read",
+      "exec",
+      "message"
+    ],
+    "fs": {
+      "workspaceOnly": false
+    },
+    "exec": {
+      "mode": "auto"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "openai": {
+        "enabled": true
+      },
+      "codex": {
+        "enabled": true,
+        "config": {
+          "codexDynamicToolsLoading": "searchable",
+          "codexDynamicToolsExclude": []
+        }
+      },
+      "telegram": {
+        "enabled": true
+      },
+      "slack": {
+        "enabled": true,
+        "config": {}
+      },
+      "google": {
+        "enabled": true
+      },
+      "memory-core": {
+        "config": {}
+      }
+    },
+    "allow": [
+      "codex",
+      "slack",
+      "openai",
+      "google",
+      "memory-core",
+      "telegram"
+    ],
+    "bundledDiscovery": "compat"
+  },
+  "auth": {
+    "profiles": {
+      "openai:developer@acmecorp.example": {
+        "provider": "openai",
+        "mode": "oauth",
+        "email": "developer@acmecorp.example"
+      },
+      "openai:api-key": {
+        "provider": "openai",
+        "mode": "api_key"
+      },
+      "google:default": {
+        "provider": "google",
+        "mode": "api_key"
+      }
+    },
+    "order": {
+      "openai": [
+        "openai:api-key",
+        "openai:developer@acmecorp.example"
+      ]
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "groups": {
+        "*": {
+          "requireMention": true
+        }
+      },
+      "botToken": "<SET_VIA_ENV:TELEGRAM_BOT_TOKEN>",
+      "dmPolicy": "pairing",
+      "groupPolicy": "allowlist"
+    },
+    "slack": {
+      "enabled": true,
+      "botToken": "<SET_VIA_ENV:SLACK_BOT_TOKEN>",
+      "appToken": "<SET_VIA_ENV:SLACK_APP_TOKEN>",
+      "groupPolicy": "open",
+      "channels": {
+        "#general": {
+          "enabled": true
+        }
+      },
+      "capabilities": {
+        "interactiveReplies": true
+      },
+      "mode": "socket",
+      "webhookPath": "/slack/events",
+      "userTokenReadOnly": true
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-08-03T23:53:49.840Z",
+    "lastRunVersion": "2026.7.1-2",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local"
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.7.1-2",
+    "lastTouchedAt": "2026-08-04T03:47:52.072Z"
+  },
+  "commands": {
+    "ownerAllowFrom": [
+      "telegram:000000000"
+    ]
+  },
+  "skills": {
+    "entries": {
+      "1password": {
+        "enabled": false
+      },
+      "blogwatcher": {
+        "enabled": false
+      },
+      "blucli": {
+        "enabled": false
+      },
+      "camsnap": {
+        "enabled": false
+      },
+      "coding-agent": {
+        "enabled": false
+      },
+      "eightctl": {
+        "enabled": false
+      },
+      "gemini": {
+        "enabled": false
+      },
+      "gh-issues": {
+        "enabled": false
+      },
+      "gifgrep": {
+        "enabled": false
+      },
+      "github": {
+        "enabled": false
+      },
+      "gog": {
+        "enabled": false
+      },
+      "goplaces": {
+        "enabled": false
+      },
+      "himalaya": {
+        "enabled": false
+      },
+      "mcporter": {
+        "enabled": false
+      },
+      "nano-pdf": {
+        "enabled": false
+      },
+      "obsidian": {
+        "enabled": false
+      },
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      },
+      "openhue": {
+        "enabled": false
+      },
+      "oracle": {
+        "enabled": false
+      },
+      "ordercli": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "sherpa-onnx-tts": {
+        "enabled": false
+      },
+      "songsee": {
+        "enabled": false
+      },
+      "sonoscli": {
+        "enabled": false
+      },
+      "spotify-player": {
+        "enabled": false
+      },
+      "summarize": {
+        "enabled": false
+      },
+      "trello": {
+        "enabled": false
+      },
+      "video-frames": {
+        "enabled": false
+      },
+      "xurl": {
+        "enabled": false
+      },
+      "consulta-docs-acmecorp": {
+        "enabled": true
+      }
+    }
+  }
+}
