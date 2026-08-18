@@ -103,17 +103,32 @@ de darlo por bueno.
 
 ## Arquitectura
 
-```
-Slack
-       │
-       ▼
- Agente (LLM + orquestador)
-       │  sandbox: workspace-write, writable_roots explícitos
-       ▼
- Repo git de documentación (Docusaurus)
-       │
-       ▼
- wiki-publish → build → swap atómico de symlink → sitio en vivo
+Las dos cajas marcan el límite real que importa: todo lo que corre *dentro*
+del sandbox muere en cuanto termina esa llamada — por eso el build no se lanza
+ahí, se encola para que lo procese algo que vive *fuera*, en el host.
+
+```mermaid
+flowchart TD
+    U["Persona en Slack"] -->|pregunta o pedido de edición| A
+
+    subgraph SANDBOX["sandbox workspace-write — efímero, muere con cada exec"]
+        A["Agente<br/>LLM + orquestador"]
+        A -->|si escribe| R[("Repo git<br/>documentación")]
+        A -->|encola job| Q[("/srv/publish-queue")]
+    end
+
+    subgraph HOST["host — systemd, persistente, fuera del sandbox"]
+        Q --> W["wiki-publish-queue-watcher"]
+        W --> B["wiki-publish<br/>build + swap atómico de symlink"]
+        B -->|éxito| C["git commit + push"]
+        B -->|falla| F[("intentos-fallidos")]
+    end
+
+    R -.->|lee para el build| B
+    C --> LIVE["sitio en vivo"]
+    A -.->|si es consulta, responde directo| U
+    C -.->|avisa| U
+    F -.->|avisa error| U
 ```
 
 ## Estructura de este repo
