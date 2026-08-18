@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Cuenta los intentos fallidos acumulados en /srv/intentos-fallidos.
+Si llega al umbral, avisa a #programacion-web con la lista de titulos.
+No borra nada, no juzga contenido -- solo cuenta y lista.
+"""
+import glob
+import os
+import re
+import subprocess
+
+QUARANTINE = "/srv/intentos-fallidos"
+THRESHOLD = 5
+ALERT_CHANNEL = "C0EXAMPLE01"  # placeholder — canal interno real reemplazado, ver README
+
+
+def extract_titles(attempt_dir: str) -> list[str]:
+    titles = []
+    for pattern in ("**/*.md", "**/*.mdx"):
+        for path in glob.glob(os.path.join(attempt_dir, pattern), recursive=True):
+            try:
+                text = open(path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            m = re.search(r'^title:\s*[\'"]?(.+?)[\'"]?\s*$', text, re.MULTILINE)
+            titles.append(m.group(1) if m else os.path.basename(path))
+    return titles
+
+
+def main() -> int:
+    if not os.path.isdir(QUARANTINE):
+        return 0
+
+    attempts = sorted(
+        d for d in glob.glob(os.path.join(QUARANTINE, "*"))
+        if os.path.isdir(d)
+    )
+    count = len(attempts)
+    if count < THRESHOLD:
+        return 0
+
+    lines = [f"⚠️ Hay {count} intentos fallidos acumulados en `intentos-fallidos`, hace falta revisarlos:"]
+    for attempt_dir in attempts:
+        ts = os.path.basename(attempt_dir.rstrip("/"))
+        titles = extract_titles(attempt_dir)
+        label = ", ".join(titles) if titles else "(sin título detectado)"
+        lines.append(f"- `{ts}`: {label}")
+
+    text = "\n".join(lines)
+    subprocess.run(["/usr/local/bin/slack-notify", ALERT_CHANNEL, "", text])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

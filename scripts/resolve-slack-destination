@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Resuelve el canal/usuario y thread_ts real de Slack a partir del
+CODEX_THREAD_ID de una sesion de eve (variable ya expuesta al sandbox).
+
+Uso: resolve-slack-destination <codex_thread_id>
+Salida (2 lineas, stdout): <channel_or_user_id>\n<thread_ts>
+Exit 1 si no se pudo resolver (ej. sesion no encontrada, o no es de Slack).
+"""
+import glob
+import json
+import sys
+
+SESSIONS_DIR = "/root/.openclaw/agents/main/sessions"
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("uso: resolve-slack-destination <codex_thread_id>", file=sys.stderr)
+        return 2
+    target_thread = sys.argv[1]
+
+    session_key = None
+    for path in glob.glob(f"{SESSIONS_DIR}/*.trajectory.jsonl"):
+        try:
+            with open(path) as f:
+                first_line = f.readline()
+        except OSError:
+            continue
+        if target_thread not in first_line:
+            continue
+        try:
+            event = json.loads(first_line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("data", {}).get("threadId") == target_thread:
+            session_key = event.get("sessionKey")
+            break
+
+    if not session_key:
+        print(f"no se encontro sessionKey para threadId={target_thread}", file=sys.stderr)
+        return 1
+
+    try:
+        sessions = json.load(open(f"{SESSIONS_DIR}/sessions.json"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"no se pudo leer sessions.json: {e}", file=sys.stderr)
+        return 1
+
+    entry = sessions.get(session_key, {})
+    delivery = entry.get("deliveryContext") or {}
+
+    if delivery.get("channel") != "slack":
+        print(f"la sesion {session_key} no es de slack (channel={delivery.get('channel')})", file=sys.stderr)
+        return 1
+
+    to = delivery.get("to", "")
+    thread_ts = delivery.get("threadId", "")
+    slack_id = to.split(":", 1)[1] if ":" in to else to
+
+    if not slack_id:
+        print(f"deliveryContext sin destino valido para {session_key}", file=sys.stderr)
+        return 1
+
+    print(slack_id)
+    print(thread_ts)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

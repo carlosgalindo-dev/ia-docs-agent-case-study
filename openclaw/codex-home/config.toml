@@ -5,4 +5,4 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [sandbox_workspace_write]
-writable_roots = ["/srv/acmecorp-docs-site", "/srv/wiki", "/var/lib/eve-doc-link", "/var/lib/eve-folder-map"]
+writable_roots = ["/srv/acmecorp-docs-site", "/srv/wiki", "/srv/publish-queue", "/var/lib/eve-doc-link", "/var/lib/eve-folder-map"]

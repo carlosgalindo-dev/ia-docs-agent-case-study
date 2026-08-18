@@ -1,0 +1,11 @@
+[Unit]
+Description=eve wiki publish queue watcher (procesa /srv/publish-queue fuera del sandbox de eve)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/wiki-publish-queue-watcher
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

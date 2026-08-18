@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Encola una publicacion para que la procese wiki-publish-queue-watcher, que
+# corre como servicio systemd fuera del sandbox de eve. No lanza nada
+# directamente: el sandbox de Codex (bubblewrap) mata cualquier proceso
+# backgroundeado con nohup/disown apenas termina el exec que lo lanzo -- el
+# hijo nace dentro del namespace de PID de esa llamada y el kernel lo mata
+# entero cuando esa llamada termina. Por eso ya no se intenta backgroundear
+# nada desde aca: solo se deja un job escrito para que otro proceso, que ya
+# esta vivo desde antes en el host, lo recoja.
+#
+# Uso: wiki-publish-async "<mensaje de commit>"
+set -uo pipefail
+
+COMMIT_MSG="${1:?uso: wiki-publish-async \"<mensaje de commit>\"}"
+QUEUE_DIR=/srv/publish-queue
+
+if [ -z "${CODEX_THREAD_ID:-}" ]; then
+	echo "[wiki-publish-async] ERROR: no hay CODEX_THREAD_ID en el entorno; no se puede resolver a quien avisar" >&2
+	exit 1
+fi
+
+DEST=$(/usr/local/bin/resolve-slack-destination "$CODEX_THREAD_ID") || {
+	echo "[wiki-publish-async] ERROR: no se pudo resolver el destino de Slack para thread=$CODEX_THREAD_ID" >&2
+	exit 1
+}
+CHANNEL=$(echo "$DEST" | sed -n '1p')
+THREAD_TS=$(echo "$DEST" | sed -n '2p')
+
+mkdir -p "$QUEUE_DIR" || {
+	echo "[wiki-publish-async] ERROR: no se pudo crear/escribir $QUEUE_DIR (revisa writable_roots en config.toml)" >&2
+	exit 1
+}
+JOB="$QUEUE_DIR/$(date +%Y%m%d-%H%M%S)-$$.json"
+TMP="$JOB.tmp"
+
+python3 - "$TMP" "$CHANNEL" "$THREAD_TS" "$COMMIT_MSG" <<'PYEOF' || {
+import json
+import sys
+
+path, channel, thread_ts, commit_msg = sys.argv[1:5]
+with open(path, "w") as f:
+    json.dump({"channel": channel, "threadTs": thread_ts, "commitMsg": commit_msg}, f)
+PYEOF
+	echo "[wiki-publish-async] ERROR: no se pudo escribir el job en $TMP (revisa writable_roots en config.toml)" >&2
+	exit 1
+}
+
+# mv en el mismo filesystem es atomico -- el watcher nunca ve un archivo a medio escribir
+mv "$TMP" "$JOB" || {
+	echo "[wiki-publish-async] ERROR: no se pudo mover $TMP a $JOB" >&2
+	exit 1
+}
+
+[ -f "$JOB" ] || {
+	echo "[wiki-publish-async] ERROR: el job debería existir en $JOB y no está -- no se encoló nada" >&2
+	exit 1
+}
+
+echo "[wiki-publish-async] publicacion encolada ($JOB); el watcher la procesa en background y avisa por Slack cuando termine"

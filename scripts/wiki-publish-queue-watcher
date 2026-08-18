@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Corre para siempre como servicio systemd --user (Restart=always), fuera de
+# cualquier sandbox de eve. Mira /srv/publish-queue/ y por cada job nuevo
+# corre wiki-publish bajo flock: si sale bien, commit+push; si falla, mueve
+# lo tocado a intentos-fallidos y avisa. Misma logica que tenia
+# wiki-publish-async-worker -- lo unico que cambia es quien la dispara: antes
+# un nohup dentro del exec sandboxeado de eve (no sobrevive al namespace de
+# PID de bubblewrap), ahora este watcher, que nunca estuvo adentro de ese
+# sandbox.
+set -uo pipefail
+
+QUEUE_DIR=/srv/publish-queue
+LOCK=/run/lock/wiki-publish.lock
+REPO=/srv/acmecorp-docs-site
+QUARANTINE=/srv/intentos-fallidos
+
+mkdir -p "$QUEUE_DIR"
+
+process_job() {
+	local job="$1"
+	[ -f "$job" ] || return 0
+
+	local channel thread_ts commit_msg
+	channel=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('channel',''))" "$job" 2>/dev/null)
+	thread_ts=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('threadTs',''))" "$job" 2>/dev/null)
+	commit_msg=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('commitMsg',''))" "$job" 2>/dev/null)
+
+	if [ -z "$commit_msg" ]; then
+		echo "[wiki-publish-queue-watcher] job invalido, lo ignoro: $job" >&2
+		rm -f "$job"
+		return 0
+	fi
+
+	echo "[wiki-publish-queue-watcher] procesando $job: $commit_msg"
+
+	local log
+	log=$(mktemp /tmp/wiki-publish-queue.XXXXXX.log)
+
+	exec 200>"$LOCK"
+	flock -x 200
+
+	/usr/local/bin/wiki-publish >"$log" 2>&1
+	local exit_code=$?
+
+	cd "$REPO"
+
+	if [ "$exit_code" -eq 0 ]; then
+		if [ -n "$(git status --porcelain)" ]; then
+			git add -A
+			git commit -q -m "$commit_msg"
+			git push -q origin feat/reestructura-areas-empresa
+		fi
+		[ -n "$channel" ] && /usr/local/bin/slack-notify "$channel" "$thread_ts" \
+			"✅ Ficha publicada, ya está en línea."
+	else
+		local ts dest_dir changed tail_lines
+		ts=$(date +%Y%m%d-%H%M%S)
+		dest_dir="$QUARANTINE/$ts"
+		mkdir -p "$dest_dir"
+
+		changed=$(git status --porcelain | cut -c4-)
+		if [ -n "$changed" ]; then
+			while IFS= read -r f; do
+				[ -z "$f" ] && continue
+				mkdir -p "$dest_dir/$(dirname "$f")"
+				cp -a "$f" "$dest_dir/$f" 2>/dev/null || true
+			done <<<"$changed"
+		fi
+		cp "$log" "$dest_dir/build.log" 2>/dev/null || true
+
+		git checkout -- . 2>/dev/null || true
+		git clean -fd 2>/dev/null || true
+
+		tail_lines=$(tail -8 "$log")
+		[ -n "$channel" ] && /usr/local/bin/slack-notify "$channel" "$thread_ts" \
+			"❌ Falló la publicación (código $exit_code). El sitio en vivo no se tocó. Tu contenido quedó guardado en intentos-fallidos para revisarlo, no se perdió. Últimas líneas del log:
+\`\`\`
+$tail_lines
+\`\`\`"
+
+		/usr/local/bin/check-intentos-fallidos
+	fi
+
+	exec 200>&-
+	rm -f "$log"
+	rm -f "$job"
+
+	echo "[wiki-publish-queue-watcher] terminado $job: exit=$exit_code"
+}
+
+echo "[wiki-publish-queue-watcher] arrancando, mirando $QUEUE_DIR"
+
+# procesa lo que ya hubiera quedado pendiente si el watcher estuvo caido
+shopt -s nullglob
+for existing in "$QUEUE_DIR"/*.json; do
+	process_job "$existing"
+done
+shopt -u nullglob
+
+inotifywait -m -q -e close_write -e moved_to --format '%f' "$QUEUE_DIR" | while read -r fname; do
+	case "$fname" in
+		*.json) process_job "$QUEUE_DIR/$fname" ;;
+	esac
+done

@@ -57,6 +57,38 @@ ejecutar el archivo completo, para no depender de resolución de módulos de
 webpack). El agente lee ese mapa en vez de tener una tabla fija que se
 desactualiza.
 
+### 5. Un skill dividido por costo y por riesgo, no por prolijidad
+El `SKILL.md` original mezclaba consultas de solo lectura (el 90% del
+tráfico) con los flujos de escritura, todos en un mismo archivo de 241
+líneas — una pregunta simple pagaba el costo de leer procedimientos que
+nunca iba a usar. Se dividió en un núcleo liviano
+([`workspace/skills/consulta-docs-acmecorp/SKILL.md`](workspace/skills/consulta-docs-acmecorp/SKILL.md),
+115 líneas) más referencias que el agente lee **solo si el pedido implica
+escribir** (`references/escribir.md`, `references/crear-seccion.md`),
+siguiendo el patrón que el propio framework documenta para skills con
+procedimientos largos. El flujo de mayor riesgo — crear una sección nueva de
+primer nivel, que toca la config del sitio — quedó aislado en su propio
+archivo con un checkpoint que corta el turno, en vez de convivir a 15 líneas
+de distancia de las ediciones rutinarias.
+
+### 6. Un bug de sandboxing que no se ve hasta que lo reproducís aislado
+La primera versión de la publicación en background lanzaba el build con
+`nohup ... & disown` desde dentro del propio `exec` sandboxeado del agente.
+Parecía funcionar. No funcionaba: el sandbox (`workspace-write`) usa
+bubblewrap, que arma un **namespace de PID propio por cada llamada** — el
+proceso backgroundeado nace ahí adentro, y cuando el `exec` que lo lanzó
+termina, el kernel mata todo lo que quede vivo en ese namespace. Ni `nohup`
+ni `disown` protegen contra esto, porque son trucos de espacio de usuario
+para sobrevivir al *shell padre*, no al *kernel destruyendo el namespace*.
+
+Lo reproduje aislado, sin tocar producción: `codex exec -s workspace-write
+"nohup sleep 45 & disown"` — un segundo después de que el comando retorna,
+el proceso ya no existe en el host. El fix real fue sacar el trabajo de
+larga duración de adentro del sandbox: el agente ahora solo encola un pedido
+en disco; un servicio systemd que **ya estaba corriendo desde antes, fuera
+de cualquier sandbox**, lo procesa. Sobrevive a lo que el `nohup` nunca
+sobrevivió, incluido un reinicio del servidor a mitad de un build.
+
 ## Arquitectura
 
 ```
@@ -81,13 +113,21 @@ openclaw/
 workspace/
   AGENTS.md, SOUL.md, TOOLS.md, USER.md, IDENTITY.md, HEARTBEAT.md
                            # instrucciones / "personalidad" del agente (system prompt)
-  skills/consulta-docs-acmecorp/SKILL.md
-                           # skill: cómo el agente consulta y edita la wiki
+  skills/consulta-docs-acmecorp/
+    SKILL.md                 # núcleo: identidad, economía de tokens, mapeo — se lee siempre
+    references/
+      comun.md                # confirmación + commits + cómo reportar (fuente única)
+      escribir.md              # crear/editar/archivar (rutinario)
+      crear-seccion.md         # sección nueva de primer nivel (alto riesgo, aislado)
 scripts/
-  wiki-publish             # build + publicación atómica
+  wiki-publish              # build + publicación atómica
+  wiki-publish-async         # encola una publicación (no lanza nada en background)
+  wiki-publish-queue-watcher # procesa la cola: build → commit+push solo si sale bien
   folder-map-generate, build-map.cjs
                            # generación del mapa tema → carpeta
   eve-doc-link/            # índice y búsqueda de links internos
+systemd/
+  wiki-publish-watcher.service # mantiene vivo el watcher de la cola, fuera del sandbox
 ```
 
 ## Stack

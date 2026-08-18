@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Manda un mensaje de Slack usando el bot token de eve.
+Uso: slack-notify <channel_id> [thread_ts] < texto_por_stdin
+     slack-notify <channel_id> [thread_ts] "texto como argumento"
+"""
+import json
+import subprocess
+import sys
+
+OPENCLAW_JSON = "/root/.openclaw/openclaw.json"
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("uso: slack-notify <channel_id> [thread_ts] [texto]", file=sys.stderr)
+        return 2
+
+    channel = sys.argv[1]
+    thread_ts = sys.argv[2] if len(sys.argv) > 2 else ""
+    if len(sys.argv) > 3:
+        text = sys.argv[3]
+    else:
+        text = sys.stdin.read()
+
+    token = json.load(open(OPENCLAW_JSON))["channels"]["slack"]["botToken"]
+    payload = {"channel": channel, "text": text}
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+
+    r = subprocess.run(
+        [
+            "curl", "-s", "-X", "POST", "https://slack.com/api/chat.postMessage",
+            "-H", f"Authorization: Bearer {token}",
+            "-H", "Content-Type: application/json; charset=utf-8",
+            "-d", json.dumps(payload),
+        ],
+        capture_output=True, text=True,
+    )
+    data = json.loads(r.stdout)
+    if not data.get("ok"):
+        print(f"slack-notify: fallo al notificar: {data.get('error')}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
