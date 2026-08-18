@@ -89,6 +89,18 @@ en disco; un servicio systemd que **ya estaba corriendo desde antes, fuera
 de cualquier sandbox**, lo procesa. Sobrevive a lo que el `nohup` nunca
 sobrevivió, incluido un reinicio del servidor a mitad de un build.
 
+### 7. Build optimizado para el hardware real, no el ideal
+El droplet corre con **una sola vCPU** — Docusaurus compila servidor y
+cliente de forma secuencial cuando no hay núcleos de sobra, y el build
+(webpack + Babel + Terser) tardaba ~199s. Se activó el modo experimental
+`experimental_faster` de Docusaurus (compila con SWC/rspack en vez de
+webpack/Babel/Terser) — bajó a ~97-121s. Validado comparando el contenido
+generado, página por página, antes y después del cambio (538/538 idénticas).
+No es un archivo de este repo — `docusaurus.config.js` vive en el repo de la
+wiki, no en el de configuración del agente — pero es la misma disciplina que
+el resto: medir antes de asumir, y validar que el cambio no rompió nada antes
+de darlo por bueno.
+
 ## Arquitectura
 
 ```
